@@ -4,6 +4,14 @@
 #		Se debe especificar el directorio de Moodle, la url para  
 #		descargar el nuevo codigo de moodle y la localizacion del 
 #		archivo binario de php como variables globales
+#
+#		Junto a este script, debe estar un script de php con nombre 
+#		get_moodle_plugins.php, el cual obtiene los plugins externos
+#		instalados en Moodle y el archivo de configuracion de Moodle 
+#		y los pasa al nuevo directorio de moodle.
+#
+#		Este script ha sido probado para migrar desde versiones Moodle 
+#		3.8.x hasta 4.0.x
 
 ## Global variables
 MOODLE_DIR="/var/www/moodle39/moodle"
