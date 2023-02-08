@@ -1,6 +1,8 @@
 #!/bin/bash
 
-umbral=$1
+# 5 hours
+#umbral=18000
+umbral=300
 
 for R in $(ps -eo uid,pid,etimes,args | grep unoconv | egrep -v "listener" | awk {'print $2";"$3'}); do
         PID=$(echo $R | awk -F';' {'print $1'})

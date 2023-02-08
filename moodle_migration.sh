@@ -53,6 +53,30 @@ function backupMoodledataSubdir() {
 }
 
 
+# Backup Database
+function backupMoodleDatabase() {
+    DBTYPE=$(cat "$MOODLE_DIR/config.php" | grep dbtype | awk -F"=" '{ print $2 }' | sed 's/[\x27\x22\x3B\x20\x09\x2B\x2C]//g')
+    DBHOST=$(cat "$MOODLE_DIR/config.php" | grep dbhost | awk -F"=" '{ print $2 }' | sed 's/[\x27\x22\x3B\x20\x09\x2B\x2C]//g')
+    DBNAME=$(cat "$MOODLE_DIR/config.php" | grep dbname | awk -F"=" '{ print $2 }' | sed 's/[\x27\x22\x3B\x20\x09\x2B\x2C]//g')
+    DBUSER=$(cat "$MOODLE_DIR/config.php" | grep dbuser | awk -F"=" '{ print $2 }' | sed 's/[\x27\x22\x3B\x20\x09\x2B\x2C]//g')
+    DBPASS=$(cat "$MOODLE_DIR/config.php" | grep dbpass | awk -F"=" '{ print $2 }' | sed 's/[\x27\x22\x3B\x20\x09\x2B\x2C]//g')
+    DBPORT=$(cat "$MOODLE_DIR/config.php" | grep dbport | awk -F">" '{ print $2 }' | sed 's/[\x27\x22\x3B\x20\x09\x2B\x2C]//g')
+    DBBACKUPNAME="$DBNAME"_$(date +%Y%m%d%H%M%S).sql
+
+    if [[ "$DBTYPE" == "mysqli" || "$DBTYPE" == "mariadb" ]]; then
+        mysqldump -u $DBUSER -h $DBHOST -P $DBPORT -p$DBPASS $DBNAME > $DBBACKUPNAME
+        echo "Moodle Database Backup Created"
+    elif [[ "$DBTYPE" == "pgsql" ]]; then
+        PGPASSWORD=$DBPASS pg_dump -U $DBUSER -h $DBHOST -P $DBPORT $DBNAME > $DBBACKUPNAME
+        echo "Moodle Database Backup Created"
+    else
+        echo "DB CONNECTOR UNKNOWN. CANNOT BACKUP MOODLE DATABASE!!"
+        exit 1
+    fi
+}
+
+
+
 
 
 # Validations
@@ -93,6 +117,8 @@ MOODLE_DATA_DIR=$( removeSlashCharacter $MOODLE_DATA_DIR )
 
 
 
+
+### ====================== STEP 0 ============================
 echo "STEP 0: Set Moodle Site in Maintenance Mode..."
 $PHP_BIN $MOODLE_DIR/admin/cli/maintenance.php --enable > /dev/null
 echo "STEP 0: Done"
@@ -100,7 +126,14 @@ echo "STEP 0: Done"
 
 
 ### ====================== STEP 1 ============================
-echo "STEP 1: Getting list of Moodle third party plugins..."
+echo "STEP 1: Backing Up Moodle Database..."
+backupMoodleDatabase
+echo "STEP 1: Done"
+
+
+
+### ====================== STEP 2 ============================
+echo "STEP 2: Getting list of Moodle third party plugins..."
 EXTERNAL_PLUGINS_DIR=$($PHP_BIN get_moodle_plugins.php $MOODLE_DIR)
 RESULT_CODE=$?
 [[ $RESULT_CODE -eq 1 ]] && {
@@ -108,12 +141,12 @@ RESULT_CODE=$?
     echo "ERROR: Run '$PHP_BIN get_moodle_plugins.php $MOODLE_DIR' to see details"
     exit 1
 }
-echo "STEP 1: Done"
+echo "STEP 2: Done"
 
 
 
-### ====================== STEP 2 ============================
-echo "STEP 2: Downloading new Moodle code..."
+### ====================== STEP 3 ============================
+echo "STEP 3: Downloading new Moodle code..."
 MOODLE_NEW_FILE=download.tgz
 wget -q -O $MOODLE_NEW_FILE $NEW_MOODLE_URL
 RESULT_CODE=$?
@@ -121,32 +154,32 @@ RESULT_CODE=$?
     echo "STEP 2: Error downloading new Moodle code"
     exit 1
 }
-echo "STEP 2: Done"
-
-
-
-### ====================== STEP 3 ============================
-echo "STEP 3: Backing Moodle dir..."
-if [[ -d "$MOODLE_DIR" && ! -d "$MOODLE_BACKUP_DIR" ]];then
-    #/usr/bin/rsync -a $MOODLE_DIR ~/
-    /usr/bin/mv $MOODLE_DIR/ $MOODLE_BACKUP_DIR/
-fi
 echo "STEP 3: Done"
 
 
 
 ### ====================== STEP 4 ============================
-echo "STEP 4: Untarring new Moodle Code and Copying to Moodle dir..."
-/usr/bin/tar -xf $MOODLE_NEW_FILE -C /tmp
-/usr/bin/rsync -a /tmp/moodle/ $MOODLE_DIR/
-/usr/bin/rm -f $MOODLE_NEW_FILE
-/usr/bin/rm -rf /tmp/moodle
+echo "STEP 4: Backing Moodle dir..."
+if [[ -d "$MOODLE_DIR" && ! -d "$MOODLE_BACKUP_DIR" ]];then
+    #/usr/bin/rsync -a $MOODLE_DIR ~/
+    /usr/bin/mv $MOODLE_DIR/ $MOODLE_BACKUP_DIR/
+fi
 echo "STEP 4: Done"
 
 
 
 ### ====================== STEP 5 ============================
-echo "STEP 5: Copying moodle external plugins to new Moodle dir"
+echo "STEP 5: Untarring new Moodle Code and Copying to Moodle dir..."
+/usr/bin/tar -xf $MOODLE_NEW_FILE -C /tmp
+/usr/bin/rsync -a /tmp/moodle/ $MOODLE_DIR/
+/usr/bin/rm -f $MOODLE_NEW_FILE
+/usr/bin/rm -rf /tmp/moodle
+echo "STEP 5: Done"
+
+
+
+### ====================== STEP 6 ============================
+echo "STEP 6: Copying moodle external plugins to new Moodle dir"
 for PLUGIN_DIR in $EXTERNAL_PLUGINS_DIR
 do
     preff=$(echo $PLUGIN_DIR | awk -F "-" '{print $1}')
@@ -154,34 +187,34 @@ do
     if [ -d "$MOODLE_BACKUP_DIR/$preff/$suff" ];then
         #echo "$MOODLE_BACKUP_DIR/$preff/$suff"
         #echo "$MOODLE_DIR/$preff/"
-	echo "STEP 5: Copying plugin $preff"_"$suff"
+	echo "STEP 6: Copying plugin $preff"_"$suff"
         /usr/bin/cp -a "$MOODLE_BACKUP_DIR/$preff/$suff" "$MOODLE_DIR/$preff/"
     fi
 done
-echo "STEP 5: Done"
-
-
-
-### ====================== STEP 6 ============================
-echo "STEP 6: Copying config.php file..."
-/usr/bin/cp -a "$MOODLE_BACKUP_DIR/config.php" "$MOODLE_DIR/config.php"
 echo "STEP 6: Done"
 
 
 
 ### ====================== STEP 7 ============================
-echo "STEP 7: Backing moodledata dirs..."
-backupMoodledataSubdir cache
-backupMoodledataSubdir localcache
-backupMoodledataSubdir sessions
+echo "STEP 7: Copying config.php file..."
+/usr/bin/cp -a "$MOODLE_BACKUP_DIR/config.php" "$MOODLE_DIR/config.php"
 echo "STEP 7: Done"
 
 
 
 ### ====================== STEP 8 ============================
-echo "STEP 8: Purging Moodle caches..."
-$PHP_BIN $MOODLE_DIR/admin/cli/purge_caches.php
+echo "STEP 8: Backing moodledata dirs..."
+backupMoodledataSubdir cache
+backupMoodledataSubdir localcache
+backupMoodledataSubdir sessions
 echo "STEP 8: Done"
+
+
+
+### ====================== STEP 9 ============================
+echo "STEP 9: Purging Moodle caches..."
+$PHP_BIN $MOODLE_DIR/admin/cli/purge_caches.php
+echo "STEP 9: Done"
 
 
 
